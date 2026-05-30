@@ -161,3 +161,30 @@ plainText
 4. 保持了原文档的markdown格式、代码块和图片引用
 5. 技术术语（如OpenFOAM、CFD、RAG）保持英文原样以确保专业性
 6. 保持与原英文文档结构完全一致，便于中英文对照查阅
+
+ChatCFD-master/
+├── chatcfd_env.yml            # Conda环境配置文件
+├── database_OFv24/            # OpenFOAM数据库
+├── grids/                     # 网格文件
+├── inputs/                    # 输入配置
+│   └── chatcfd_config.json                       # 系统配置文件（API密钥、路径等）
+├── pdf/                       # 论文PDF存储（未在结构中列出具体文件）
+├── rag_database/              # RAG知识库
+├── run_chatcfd/               # 算例运行目录
+├── src/                       # 源代码
+│   ├── chatbot.py             # Streamlit聊天界面
+│   ├── preprocess_OF_tutorial.py                 # OpenFOAM算例预处理
+│   ├── run_of_case.py         # 运行CFD算例
+│   ├── pdf_chunk_ask_question.py                 # PDF解析与问答
+│   ├── qa_modules.py          # 问答模块
+│   ├── file_corrector.py      # 算例文件错误修正
+│   ├── file_writer.py         # 算例文件生成与写入
+│   ├── import_documents.py    # RAG知识库文档导入
+│   ├── rag_database.py        # RAG向量数据库管理
+│   ├── set_config.py          # 系统配置加载
+│   ├── case_file_requirements.py                 # 算例文件需求检查
+│   ├── main_run_chatcfd.py    # 主流程控制与算例执行
+│   └── config.py              # 全局配置参数定义
+├── temp/                      # 临时文件存储
+└── test_env/                  # 环境测试
+
