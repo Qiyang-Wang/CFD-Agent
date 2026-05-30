@@ -14,6 +14,11 @@ import config, case_file_requirements, preprocess_OF_tutorial, set_config, main_
 from qa_modules import estimate_tokens  # 添加此行导入estimate_tokens函数
 import pathlib
 import os
+import faiss
+import numpy as np
+import os
+from pathlib import Path
+import json
 
 
 general_prompt = ''
@@ -488,3 +493,18 @@ if __name__ == "__main__":
     set_config.read_in_config()
     # set_config.load_openfoam_environment()
     main()
+
+
+# 在ChatBot类中添加
+def rag_query(self, question):
+    from src.rag_database import RAGDatabase
+    db = RAGDatabase()
+    results = db.search(question)
+    
+    context = "\n\n".join([f"Source: {r['source']}\nContent: {r['content']}" for r in results])
+    prompt = f"""基于以下技术文档内容回答问题：
+{context}
+
+问题：{question}
+"""
+    return self.get_response([{"role": "user", "content": prompt}])

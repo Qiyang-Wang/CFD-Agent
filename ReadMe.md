@@ -96,6 +96,9 @@ python test_env/download_model.py
 
 # 测试模型
 python test_env/test_all_mpnet_base_v2.py
+
+# 若上述下载失败，可尝试test_bge_m3.py
+python test_env/test_bge_m3.py
 ```
 预期输出（CPU）：
 
@@ -115,8 +118,6 @@ Similarity 0-2: 0.182
 根据需要调整其他参数
 ### 步骤3：启动界面
 启动ChatCFD界面：
-
-
 ```bash
 streamlit run src/chatbot.py
 ```

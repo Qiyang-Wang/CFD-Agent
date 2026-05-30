@@ -9,6 +9,8 @@ import re
 import tiktoken
 from datetime import datetime
 import qa_modules, config, os
+from markdown import markdown
+import html2text
 
 class CFDCaseExtractor:
     def __init__(self, model_name=None):
@@ -189,3 +191,39 @@ def main():
         print(chunk_content)
 
 # main()
+
+
+class DocumentProcessor:
+    def __init__(self, model_name='sentence-transformers/all-mpnet-base-v2'):
+        self.embedder = SentenceTransformer(model_name)
+        self.index = None
+        self.chunks = []
+        self.encoder = tiktoken.get_encoding("cl100k_base")
+        self.html_converter = html2text.HTML2Text()
+        self.html_converter.ignore_links = True
+
+    def process_pdf(self, file_path):
+        # 保留现有PDF处理逻辑
+        pass
+
+    def process_markdown(self, file_path):
+        """处理Markdown文件并提取文本块"""
+        with open(file_path, 'r', encoding='utf-8') as f:
+            md_content = f.read()
+        
+        # 转换为纯文本（保留代码块格式）
+        html_content = markdown(md_content)
+        text = self.html_converter.handle(html_content)
+        
+        # 代码块特殊处理
+        code_blocks = re.findall(r'```.*?```', text, re.DOTALL)
+        for code in code_blocks:
+            text = text.replace(code, f"[CODE_BLOCK]: {code}")
+        
+        # 使用现有分块逻辑
+        splitter = RecursiveCharacterTextSplitter(
+            chunk_size=800,
+            chunk_overlap=100,
+            separators=["\n## ", "\n### ", "```\n", "\n\n", "\n"]
+        )
+        return splitter.split_text(text)
