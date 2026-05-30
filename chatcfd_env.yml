@@ -181,3 +181,6 @@ dependencies:
       - urllib3==2.3.0
       - watchdog==6.0.0
       - yarl==1.18.3
+      - llama-index==0.10.15
+      - llama-index-core==0.10.15
+      - llama-index-embeddings-huggingface==0.1.5
