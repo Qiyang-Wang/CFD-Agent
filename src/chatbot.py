@@ -9,6 +9,7 @@ import re
 import tiktoken
 from datetime import datetime
 import requests  # 添加此行导入requests模块
+import os  # 确保导入os模块
 
 import config, case_file_requirements, preprocess_OF_tutorial, set_config, main_run_chatcfd, qa_modules
 from qa_modules import estimate_tokens  # 添加此行导入estimate_tokens函数
@@ -20,6 +21,57 @@ import os
 from pathlib import Path
 import json
 
+# 添加日志相关函数
+def generate_log_filename(content: str) -> str:
+    """根据对话内容生成日志文件名"""
+    # 提取前几个关键词作为文件名
+    keywords = re.findall(r'\b\w{4,}\b', content)[:3]
+    if not keywords:
+        keywords = ["chat"]
+    
+    # 生成时间戳
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    
+    # 组合文件名：关键词_时间.log
+    filename = f"{'_'.join(keywords)}_{timestamp}.log"
+    return filename
+
+def init_chat_log(content: str) -> str:
+    """初始化新的对话日志"""
+    # 确保LogFiles目录存在
+    log_dir = pathlib.Path("LogFiles")
+    log_dir.mkdir(exist_ok=True)
+    
+    # 生成日志文件名
+    filename = generate_log_filename(content)
+    log_path = log_dir / filename
+    
+    # 记录日志文件路径到会话状态
+    st.session_state.current_log_path = str(log_path)
+    
+    # 写入日志头部信息
+    with open(log_path, "w", encoding="utf-8") as f:
+        f.write(f"===== ChatCFD Log - {datetime.now().isoformat()} =====\n")
+        f.write(f"对话主题: {content[:100]}...\n")
+        f.write("="*50 + "\n\n")
+    
+    return str(log_path)
+
+def write_to_log(role: str, content: str, reasoning: str = ""):
+    """写入内容到当前日志文件"""
+    if "current_log_path" not in st.session_state:
+        return
+        
+    log_path = st.session_state.current_log_path
+    with open(log_path, "a", encoding="utf-8") as f:
+        f.write(f"[{datetime.now().isoformat()}] {role}:\n")
+        f.write(f"{content}\n")
+        
+        # 确保推理内容被记录，即使为空也保留标记
+        f.write("\n[LLM推理过程]:\n")
+        f.write(f"{reasoning if reasoning else '无推理内容'}\n")
+            
+        f.write("\n" + "-"*50 + "\n\n")
 
 general_prompt = ''
 
@@ -28,11 +80,18 @@ class ChatBot:
     def __init__(self):
         self.model_name = os.environ.get("OLLAMA_MODEL_NAME", "llama3.2:latest")
         self.base_url = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434/api")
-        self.system_prompt = """你是一个智能助手，能够：
-        1. 保持礼貌和专业
-        2. 记住对话的上下文
-        3. 处理和分析用户上传的文档内容
-        4. 回答用户问题时保持对话连贯
+        self.system_prompt = """你是一个专注于计算流体力学(CFD)领域的智能助手，能够：
+        1. 保持礼貌和专业的学术态度
+        2. 记住对话的上下文并提供连贯的技术支持
+        3. 处理和分析CFD相关文档，包括研究论文、案例报告和技术文档
+        4. 回答用户问题时保持对话连贯且技术准确
+        5. 提供CFD数值模拟相关的专业支持，包括物理模型选择、边界条件设置、求解器配置和结果分析
+
+        回答问题时请严格按照以下格式输出，不得添加任何额外内容：
+        [思考过程]
+        (这里填写你的推理步骤，详细说明你的思考过程)
+        [回答]
+        (这里填写最终回答，清晰准确地回应用户问题)
 
         请始终以清晰、准确和有帮助的方式回应。"""
         self.temperature = config.temperature
@@ -54,7 +113,28 @@ class ChatBot:
             
             response = requests.post(url, json=payload)
             response_data = response.json()
-            content = response_data["message"]["content"]
+            
+            # 新增：检查 API 响应是否包含错误信息
+            if "error" in response_data:
+                raise ValueError(f"Ollama API Error: {response_data['error']}")
+            
+            # 新增：安全获取 message 和 content 字段
+            message = response_data.get("message", {})
+            content = message.get("content", "")
+            if not content:
+                raise ValueError("Ollama API returned empty content")
+            
+            # 解析思考过程和回答内容
+            thinking_pattern = r"\[思考过程\]\s*\n(.*?)\[回答\]\s*\n(.*)"
+            match = re.search(thinking_pattern, content, re.DOTALL)
+            
+            if match:
+                thinking = match.group(1).strip()
+                answer = match.group(2).strip()
+            else:
+                # 如果没有匹配到格式，将全部内容作为回答
+                thinking = "未解析到推理过程"
+                answer = content
             
             # Estimate token usage
             prompt_tokens = estimate_tokens(json.dumps(payload["messages"]), self.model_name)
@@ -68,13 +148,16 @@ class ChatBot:
                 "prompt_tokens": prompt_tokens,
                 "completion_tokens": completion_tokens,
                 "total_tokens": total_tokens,
-                "timestamp": datetime.now().isoformat()
+                "timestamp": datetime.now().isoformat(),
+                "thinking": thinking,  # 记录思考过程
+                "answer": answer       # 记录回答内容
             }
             self.token_counter["qa_history"].append(qa_record)
             
-            return content
+            # 返回包含思考过程和回答的元组
+            return thinking, answer
         except Exception as e:
-            return f"Chat error: {str(e)}"
+            return f"Chat error: {str(e)}", ""
 
     def process_pdf(self, pdf_file):
         try:
@@ -131,29 +214,73 @@ def test_function_call_by_QA():
     return "✅ Test function successfully called! System status normal."
     
 
+# 添加自定义CSS样式
+def add_custom_css():
+    st.markdown("""
+    <style>
+    .stApp {
+        max-width: 1200px;
+        margin: 0 auto;
+    }
+    .stChatMessage {
+        padding: 1rem;
+        border-radius: 10px;
+        margin-bottom: 1rem;
+        box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+    }
+    .stChatMessage:nth-child(odd) {
+        background-color: #f0f2f6;
+    }
+    .stButton>button {
+        background-color: #1e88e5;
+        color: white;
+        border-radius: 5px;
+        padding: 0.5rem 1rem;
+        border: none;
+    }
+    .stButton>button:hover {
+        background-color: #1976d2;
+    }
+    .stFileUploader>div {
+        border: 2px dashed #1e88e5;
+        border-radius: 5px;
+        padding: 1rem;
+    }
+    .sidebar-header {
+        color: #1e88e5;
+        border-bottom: 2px solid #1e88e5;
+        padding-bottom: 0.5rem;
+        margin-bottom: 1rem;
+    }
+    .main-header {
+        color: #1e88e5;
+        text-align: center;
+        margin-bottom: 1rem;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+
 def main():
-
+    # 添加自定义CSS
+    add_custom_css()
+    
     # test other functions
-
     # test_function_call_by_QA()
-
     # a = 1
 
     # streamlit functions
-
-    st.title("ChatCFD: chat to run CFD cases.")
-
+    st.title("740 CFD-Agent")
+    #st.markdown("<h3 class='main-header'>智能CFD案例分析与模拟助手</h3>", unsafe_allow_html=True)
     st.divider()
     
     initialize_session_state()
 
     with st.sidebar:
-
-        # Export chat history functionality
-        st.header("Export chat history")
+        # 美化侧边栏标题
+        st.markdown("<h3 class='sidebar-header'>导出聊天记录</h3>", unsafe_allow_html=True)
         export_format = "JSON"
         
-        if st.button("Export chat"):
+        if st.button("导出聊天记录"):
             if not st.session_state.messages:
                 st.warning("Empty chat history")
             else:
@@ -178,10 +305,11 @@ def main():
 
     # Sidebar: File Upload
     with st.sidebar:
-        st.header("Upload the document")
+        st.markdown("<h3 class='sidebar-header'>上传文档</h3>", unsafe_allow_html=True)
         uploaded_file = st.file_uploader(
-            "Please upload PDF",
-            type=['pdf']
+            "请上传PDF文件",
+            type=['pdf'],
+            help="上传包含CFD案例的PDF文档"
         )
         
         if uploaded_file:
@@ -225,9 +353,14 @@ def main():
                     
                     # Get response for question A
                     with st.chat_message("assistant"):
-                        response_1 = st.session_state.chatbot.get_response(st.session_state.messages)
+                        thinking, response_1 = st.session_state.chatbot.get_response(st.session_state.messages)
                         st.write(response_1)
-                        st.session_state.messages.append({"role": "assistant", "content": response_1, "timestamp": datetime.now().isoformat()})
+                        st.session_state.messages.append({
+                            "role": "assistant", 
+                            "content": response_1,  # 存储字符串回答
+                            "thinking": thinking,   # 单独存储思考过程
+                            "timestamp": datetime.now().isoformat()
+                        })
 
                     st.session_state.file_processed = True
 
@@ -247,10 +380,11 @@ def main():
                         st.session_state.ask_case_solver = True
 
     with st.sidebar:
-        st.header("Upload the mesh file")
+        st.markdown("<h3 class='sidebar-header'>上传网格文件</h3>", unsafe_allow_html=True)
         uploaded_mesh_file = st.file_uploader(
-            "Please upload mesh (only support the Fluent-format .msh)",
-            type=['msh']
+            "请上传网格文件（仅支持Fluent格式.msh）",
+            type=['msh'],
+            help="上传Fluent格式的网格文件"
         )
         if uploaded_mesh_file:
             if not st.session_state.uploaded_grid:
@@ -299,13 +433,34 @@ def main():
             if message["role"] == "user":
                 st.chat_message("user").write(message["content"])
             else:
-                if message["content"].startswith("Understand the user's answer"):
+                # 先检查内容类型，再判断是否需要跳过
+                content = message["content"]
+                skip = False
+                
+                if isinstance(content, tuple) and len(content) == 2:
+                    # 元组类型：检查回答部分
+                    thinking, answer = content
+                    if answer.startswith("Understand the user's answer"):
+                        skip = True
+                elif isinstance(content, str):
+                    # 字符串类型：直接检查
+                    if content.startswith("Understand the user's answer"):
+                        skip = True
+                
+                if skip:
                     continue
-                else:
-                    st.chat_message("assistant").write(message["content"])
+                    
+                with st.chat_message("assistant"):
+                    if isinstance(content, tuple) and len(content) == 2:
+                        thinking, answer = content
+                        with st.expander("查看思考过程"):
+                            st.write(thinking)
+                        st.write(answer)
+                    else:
+                        st.write(content)
 
     if st.session_state.show_start == False:
-        st.header('**Please upload the paper to start!**')
+        #st.header('**Please upload the paper to start!**')
         st.session_state.show_start = True
 
     # guide the user to choose cases
@@ -366,6 +521,8 @@ def main():
                 response = st.session_state.chatbot.get_response(st.session_state.messages)
                 st.write(response)
                 st.session_state.messages.append({"role": "assistant", "content": response, "timestamp": datetime.now().isoformat()})
+                # 记录助手响应到日志
+                write_to_log("assistant", response)
 
             prompt_2 = f'''Task: The user want to simulate a CFD case with the following characteristicis,
             identify the CFD case from the following case descriptions from a PDF.
@@ -381,7 +538,14 @@ def main():
     if prompt := st.chat_input("Enter your requirement or reply."):
         
         st.chat_message("user").write(prompt)  # Display the user's original prompt in the UI
-
+        
+        # 初始化日志（如果是新对话）
+        if len(st.session_state.messages) == 0 or "current_log_path" not in st.session_state:
+            init_chat_log(prompt)
+        
+        # 写入用户输入到日志
+        write_to_log("用户", prompt)
+        
         if st.session_state.ask_case_solver and not st.session_state.user_answer_finished: # ask the user for Case_X, solver and turbulence
             json_reponse_sample = '''
             {
@@ -445,7 +609,8 @@ def main():
                 decorated_response = f'''You choose to simulate the cases with the following setups:\n{md_form}'''
                 st.write(decorated_response)
                 st.session_state.messages.append({"role": "assistant", "content": decorated_response, "timestamp": datetime.now().isoformat()})
-                # later, fnae
+                # 记录助手响应到日志，包含推理过程
+                write_to_log("assistant", decorated_response, thinking)
                 st.session_state.user_answer_finished = True
 
                 
@@ -454,9 +619,22 @@ def main():
             st.session_state.messages.append({"role": "user", "content": prompt, "timestamp": datetime.now().isoformat()})
             # Get assistant's response
             with st.chat_message("assistant"):
-                response = st.session_state.chatbot.get_response(st.session_state.messages)
+                # 获取思考过程和回答
+                thinking, response = st.session_state.chatbot.get_response(st.session_state.messages)
+                # 使用expander组件显示思考过程（可折叠）
+                with st.expander("查看思考过程"):
+                    st.write(thinking)
+                # 显示回答内容
                 st.write(response)
-                st.session_state.messages.append({"role": "assistant", "content": response, "timestamp": datetime.now().isoformat()})
+                # 保存消息，将思考过程和回答分开存储
+                st.session_state.messages.append({
+                    "role": "assistant", 
+                    "content": response,  # 仅存储回答作为content
+                    "thinking": thinking,  # 单独存储思考过程
+                    "timestamp": datetime.now().isoformat()
+                })
+                # 记录助手响应到日志，包含推理过程
+                write_to_log("assistant", response, thinking)
 
     if st.session_state.file_processed and st.session_state.user_answer_finished and not st.session_state.uploaded_grid:
         st.write("If you don't have further requirement on the case setup. \n**Please upload the mesh of the Fluent .msh format.**")

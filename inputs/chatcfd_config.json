@@ -2,8 +2,8 @@
     "OLLAMA_MODEL_NAME": "llama3.2:latest",
     "OLLAMA_BASE_URL": "http://localhost:11434/api",
     "temperature": 0.7,
-    "OpenFOAM_path": "/usr/lib/openfoam/openfoam2406[path_to_OpenFOAM]",
-    "OpenFOAM_tutorial_path": "[/home/fane/OpenFOAM/fane-v2406/tutorials[path_to_OpenFOAM_tutorial]",
+    "OpenFOAM_path": "/usr/lib/openfoam/openfoam2406",
+    "OpenFOAM_tutorial_path": "[/home/fane/OpenFOAM/fane-v2406/tutorials",
     "run_time": 3,
     "max_running_test_round": 30,
     "pdf_chunk_d": 1.5

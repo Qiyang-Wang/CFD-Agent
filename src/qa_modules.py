@@ -36,7 +36,20 @@ class GlobalLogManager:
     def add_log(cls, log_entry):
         cls.logs.append(log_entry)
         cls._save_case_log()
-    
+        
+        # 写入到聊天日志文件
+        if "current_log_path" in st.session_state:
+            from src.chatbot import write_to_log
+            
+            # 提取角色和内容
+            role = "助手"
+            content = log_entry.get("assistant_response", "")
+            # 确保获取推理内容，不存在则为空字符串
+            reasoning = log_entry.get("reasoning_content", "")
+            
+            # 写入日志，强制传递推理内容参数
+            write_to_log(role, content, reasoning)
+
     @classmethod
     def _generate_statistics(cls):
         stats = {
@@ -271,7 +284,7 @@ class QA_NoContext_deepseek_R1(BaseQA_deepseek_R1):
             "model_type": "deepseek-r1",
             "user_prompt": question,
             "assistant_response": result["answer"],
-            "reasoning_content": result["reasoning_content"],
+            "reasoning_content": result["reasoning_content"],  # 确保推理内容被记录
             "prompt_tokens": result["prompt_tokens"],
             "response_tokens": result["completion_tokens"],
             "reasoning_tokens": reasoning_tokens,
@@ -293,6 +306,11 @@ class BaseQA_Ollama:
 
     def _setup_qa_interface(self):
         def get_ollama_response(messages):
+            # 确保所有消息的content都是字符串
+            for msg in messages:
+                if not isinstance(msg.get("content", ""), str):
+                    msg["content"] = str(msg["content"])
+                    
             url = f"{self.base_url}/chat"
             payload = {
                 "model": self.model_name,
@@ -317,16 +335,31 @@ class QA_NoContext_Ollama(BaseQA_Ollama):
         messages = [{"role": "user", "content": question}]
         result = self.qa_interface(messages)
         
+        # 解析思考过程和回答内容 - 修改正则表达式以提高匹配成功率
+        content = result["content"]
+        # 放宽匹配条件，允许标记前后有空白，使用贪婪匹配捕获所有内容
+        thinking_pattern = r"\s*\[\s*思考过程\s*\]\s*\n(.*?)\s*\[\s*回答\s*\]\s*\n(.*)", re.DOTALL
+        match = re.search(thinking_pattern, content)
+        
+        if match:
+            reasoning_content = match.group(1).strip()  # 提取思考过程
+            answer = match.group(2).strip()             # 提取回答内容
+        else:
+            # 如果没有匹配到格式，将全部内容作为回答，推理过程设为"未解析到推理过程"
+            reasoning_content = "未解析到推理过程"
+            answer = content
+        
         GlobalLogManager.add_log({
             "model_type": "ollama",
             "user_prompt": question,
-            "assistant_response": result["content"],
+            "assistant_response": answer,
+            "reasoning_content": reasoning_content,  # 确保推理内容被记录
             "prompt_tokens": result["prompt_tokens"],
             "response_tokens": result["completion_tokens"],
             "timestamp": datetime.now().isoformat()
         })
         
-        return result["content"]
+        return answer
 
 class QA_Context_Ollama(BaseQA_Ollama):
     def __init__(self):
