@@ -429,35 +429,29 @@ def main():
 
     # Display conversation history
     if len(st.session_state.messages) > 0:
-        for message in st.session_state.messages[1:]:
+        # 遍历所有消息，不跳过第一条
+        for message in st.session_state.messages:
             if message["role"] == "user":
                 st.chat_message("user").write(message["content"])
             else:
-                # 先检查内容类型，再判断是否需要跳过
+                # 移除严格的skip判断，只跳过系统内部指令
                 content = message["content"]
                 skip = False
                 
-                if isinstance(content, tuple) and len(content) == 2:
-                    # 元组类型：检查回答部分
-                    thinking, answer = content
-                    if answer.startswith("Understand the user's answer"):
-                        skip = True
-                elif isinstance(content, str):
-                    # 字符串类型：直接检查
-                    if content.startswith("Understand the user's answer"):
-                        skip = True
+                # 仅跳过特定的系统自动生成指令
+                if isinstance(content, str) and content.startswith("Understand the user's answer"):
+                    skip = True
                 
                 if skip:
                     continue
-                    
+                
                 with st.chat_message("assistant"):
-                    if isinstance(content, tuple) and len(content) == 2:
-                        thinking, answer = content
+                    # 显示思考过程（如果存在）
+                    if "thinking" in message and message["thinking"]:
                         with st.expander("查看思考过程"):
-                            st.write(thinking)
-                        st.write(answer)
-                    else:
-                        st.write(content)
+                            st.write(message["thinking"])
+                    # 显示回答内容
+                    st.write(content)
 
     if st.session_state.show_start == False:
         #st.header('**Please upload the paper to start!**')

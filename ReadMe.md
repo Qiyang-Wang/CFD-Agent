@@ -122,7 +122,7 @@ Similarity 0-2: 0.182
 streamlit run src/chatbot.py
 ```
 界面应类似如下所示： ChatCFD界面
-![ChatCFD Interface](figures/user_interface_demo.png)
+![ChatCFD Interface](Newinterface.png)
 然后用户应按照ChatCFD的指引上传PDF文件、指定CFD算例并上传CFD网格文件。
 
 ### 测试语句
@@ -154,20 +154,13 @@ plainText
 
 plainText
 
-主要更新内容：
-1. 补充了原中文文档缺失的"安装步骤"完整内容（包括组件验证、模型下载测试）
-2. 新增"步骤2：系统设置"和"步骤3：启动界面"的中文翻译
-3. 完整翻译了"使用方法"、"性能表现"和"引用方式"章节
-4. 保持了原文档的markdown格式、代码块和图片引用
-5. 技术术语（如OpenFOAM、CFD、RAG）保持英文原样以确保专业性
-6. 保持与原英文文档结构完全一致，便于中英文对照查阅
-
+```plaintext
 ChatCFD-master/
 ├── chatcfd_env.yml            # Conda环境配置文件
 ├── database_OFv24/            # OpenFOAM数据库
 ├── grids/                     # 网格文件
 ├── inputs/                    # 输入配置
-│   └── chatcfd_config.json                       # 系统配置文件（API密钥、路径等）
+│   └── chatcfd_config.json    # 系统配置文件（API密钥、路径等）
 ├── pdf/                       # 论文PDF存储（未在结构中列出具体文件）
 ├── rag_database/              # RAG知识库
 ├── run_chatcfd/               # 算例运行目录
